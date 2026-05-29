@@ -1,23 +1,24 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSessionStore } from '../../stores';
+import { getSocket } from '../../services/socket';
 
-// ── Live Preview via WebRTC (system webcam) ───────────────────────────────────
-function LivePreview() {
-  const videoRef = useRef<HTMLVideoElement>(null);
+// ── Live Preview via WebRTC ────────────────────────────────────────────────
+function LivePreview({ videoRef }: { videoRef: React.RefObject<HTMLVideoElement | null> }) {
   const [hasCamera, setHasCamera] = useState(false);
 
   useEffect(() => {
     let stream: MediaStream | null = null;
 
     navigator.mediaDevices
-      .getUserMedia({ video: { facingMode: 'user', width: 1920, height: 1080 }, audio: false })
+      .getUserMedia({ video: { facingMode: 'user', width: 1280, height: 720 }, audio: false })
       .then((s) => {
         stream = s;
         if (videoRef.current) {
           videoRef.current.srcObject = s;
+          videoRef.current.play().catch(() => {});
           setHasCamera(true);
         }
       })
@@ -25,110 +26,75 @@ function LivePreview() {
 
     return () => {
       stream?.getTracks().forEach((t) => t.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
     };
-  }, []);
-
-  if (!hasCamera) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'hsl(0,0%,6%)',
-          color: 'var(--color-text-muted)',
-          flexDirection: 'column',
-          gap: '12px',
-        }}
-      >
-        <div style={{ fontSize: '48px' }}>📷</div>
-        <p style={{ fontSize: '16px' }}>
-          请确认摄像头权限已开启
-        </p>
-        <p style={{ fontSize: '14px', color: 'var(--color-text-muted)' }}>
-          相机取景将在此处显示
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted
-      style={{
-        width: '100%',
-        height: '100%',
-        objectFit: 'cover',
-        transform: 'scaleX(-1)', // mirror for selfie view
-      }}
-    />
-  );
-}
-
-// ── Countdown Ring ────────────────────────────────────────────────────────────
-function CountdownRing({
-  remaining,
-  total,
-}: {
-  remaining: number;
-  total: number;
-}) {
-  const size = 280;
-  const stroke = 8;
-  const r = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * r;
-  const progress = remaining / total;
-  const dashOffset = circumference * (1 - progress);
+  }, [videoRef]);
 
   return (
     <div
       style={{
+        width: '100%',
+        aspectRatio: '16/9',
+        maxHeight: '45vh',
+        borderRadius: '16px',
+        overflow: 'hidden',
+        background: 'hsl(0,0%,8%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         position: 'relative',
-        width: `${size}px`,
-        height: `${size}px`,
       }}
     >
-      {/* SVG ring */}
-      <svg
-        width={size}
-        height={size}
-        style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}
-      >
-        {/* Background track */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="hsl(0,0%,15%)"
-          strokeWidth={stroke}
-        />
-        {/* Progress arc */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke="url(#countdown-grad)"
-          strokeWidth={stroke}
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.8s cubic-bezier(0.16, 1, 0.3, 1)' }}
-        />
-        <defs>
-          <linearGradient id="countdown-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="hsl(345, 78%, 65%)" />
-            <stop offset="100%" stopColor="hsl(300, 60%, 55%)" />
-          </linearGradient>
-        </defs>
-      </svg>
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: 'scaleX(-1)', // mirror
+          display: hasCamera ? 'block' : 'none',
+        }}
+      />
+      {!hasCamera && (
+        <div style={{ textAlign: 'center', color: 'var(--color-text-sub)' }}>
+          <div style={{ fontSize: '48px', marginBottom: '8px' }}>📷</div>
+          <div style={{ fontSize: '14px' }}>无摄像头预览</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-      {/* Number */}
+// ── Ring countdown timer ───────────────────────────────────────────────────
+function CountdownRing({ remaining, total }: { remaining: number; total: number }) {
+  const radius = 60;
+  const circumference = 2 * Math.PI * radius;
+  const progress = total > 0 ? remaining / total : 0;
+  const offset = circumference * (1 - progress);
+
+  const color =
+    remaining <= 1 ? '#ef4444' : remaining <= 2 ? '#f59e0b' : 'var(--color-primary)';
+
+  return (
+    <div style={{ position: 'relative', width: 160, height: 160 }}>
+      <svg width="160" height="160" style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx="80" cy="80" r={radius} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="10" />
+        <circle
+          cx="80"
+          cy="80"
+          r={radius}
+          fill="none"
+          stroke={color}
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset 0.9s linear, stroke 0.3s ease' }}
+        />
+      </svg>
       <div
         style={{
           position: 'absolute',
@@ -136,17 +102,17 @@ function CountdownRing({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          flexDirection: 'column',
         }}
       >
         <AnimatePresence mode="wait">
           <motion.span
             key={remaining}
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 1.5 }}
-            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="countdown-number"
-            style={{ fontSize: '120px' }}
+            initial={{ scale: 1.6, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.4, opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            style={{ fontSize: '52px', fontWeight: 800, color, lineHeight: 1 }}
           >
             {remaining === 0 ? '📸' : remaining}
           </motion.span>
@@ -156,60 +122,59 @@ function CountdownRing({
   );
 }
 
-// ── Photo Progress ────────────────────────────────────────────────────────────
-function PhotoProgress({
-  capturedCount,
-  totalCount,
-}: {
-  capturedCount: number;
-  totalCount: number;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        gap: '8px',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      {Array.from({ length: totalCount }, (_, i) => (
-        <motion.div
-          key={i}
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: i * 0.1 }}
-          style={{
-            width: '16px',
-            height: '16px',
-            borderRadius: '50%',
-            background:
-              i < capturedCount
-                ? 'var(--color-accent)'
-                : i === capturedCount
-                ? 'var(--color-border)'
-                : 'var(--color-border-soft)',
-            boxShadow:
-              i < capturedCount
-                ? '0 0 12px var(--color-accent-glow)'
-                : 'none',
-            border: i === capturedCount ? '2px solid var(--color-text-muted)' : 'none',
-            transition: 'all 0.3s ease',
-          }}
-        />
-      ))}
-    </div>
-  );
+// ── Capture webcam frame and send to server ────────────────────────────────
+function captureWebcamFrame(
+  video: HTMLVideoElement,
+  sessionId: string
+): void {
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 720;
+  const ctx = canvas.getContext('2d')!;
+
+  // Mirror to match preview (un-mirror for the actual capture)
+  ctx.save();
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+
+  const imageBase64 = canvas.toDataURL('image/jpeg', 0.92);
+  const socket = getSocket();
+  socket.emit('camera:capture_frame', {
+    sessionId,
+    imageBase64,
+    mimeType: 'image/jpeg',
+  });
 }
 
-// ── Main CountdownScreen ──────────────────────────────────────────────────────
+// ── Main CountdownScreen ───────────────────────────────────────────────────
 export function CountdownScreen() {
   const session = useSessionStore((s) => s.session);
   const countdownRemaining = useSessionStore((s) => s.countdownRemaining);
   const countdownTotal = useSessionStore((s) => s.countdownTotal);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const hasTriggeredRef = useRef(false);
 
-  const capturedCount = session?.photoCount ?? 0;
-  const totalCount = session ? 4 : 4; // from template
+  const shotNumber = (session?.photoCount ?? 0) + 1;
+
+  // When countdown reaches 0, capture webcam frame and send to server
+  useEffect(() => {
+    if (countdownRemaining === 0 && countdownTotal > 0 && !hasTriggeredRef.current && session?.id) {
+      hasTriggeredRef.current = true;
+
+      if (videoRef.current && videoRef.current.readyState >= 2) {
+        captureWebcamFrame(videoRef.current, session.id);
+      } else {
+        console.log('📷 No webcam stream — waiting for Watch Folder...');
+      }
+    }
+
+    // Reset trigger flag when a new countdown starts (remaining resets to total)
+    if (countdownRemaining === countdownTotal && countdownTotal > 0) {
+      hasTriggeredRef.current = false;
+    }
+  }, [countdownRemaining, countdownTotal, session?.id]);
 
   return (
     <div
@@ -218,86 +183,60 @@ export function CountdownScreen() {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: 'var(--color-bg)',
-        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '32px',
+        padding: '24px',
       }}
     >
-      {/* Live preview takes full background */}
-      <div
+      {/* Shot number indicator */}
+      <motion.div
+        initial={{ opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
         style={{
-          position: 'absolute',
-          inset: 0,
-          zIndex: 0,
-        }}
-      >
-        <LivePreview />
-
-        {/* Dark gradient overlay for readability */}
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.5) 100%)',
-          }}
-        />
-      </div>
-
-      {/* Countdown overlay */}
-      <div
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          width: '100%',
-          height: '100%',
           display: 'flex',
-          flexDirection: 'column',
+          gap: '10px',
           alignItems: 'center',
-          justifyContent: 'center',
-          gap: '32px',
         }}
       >
-        {/* Header */}
-        <div
-          className="glass"
-          style={{
-            padding: '10px 20px',
-            borderRadius: '100px',
-          }}
-        >
-          <span
-            style={{ color: 'white', fontSize: '16px', fontWeight: 500 }}
-          >
-            第 {capturedCount + 1} 张 / 共 {totalCount} 张
-          </span>
-        </div>
+        <span style={{ color: 'var(--color-text-sub)', fontSize: '14px' }}>
+          第 {shotNumber} 张
+        </span>
+      </motion.div>
 
-        {/* Countdown ring */}
-        {countdownRemaining > 0 && (
-          <CountdownRing
-            remaining={countdownRemaining}
-            total={countdownTotal}
-          />
+      {/* Live preview */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        style={{ width: '100%', maxWidth: '560px' }}
+      >
+        <LivePreview videoRef={videoRef} />
+      </motion.div>
+
+      {/* Countdown ring */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.1 }}
+      >
+        {countdownTotal > 0 ? (
+          <CountdownRing remaining={countdownRemaining} total={countdownTotal} />
+        ) : (
+          <div style={{ color: 'var(--color-text-sub)', fontSize: '14px' }}>等待服务器...</div>
         )}
+      </motion.div>
 
-        {/* CHEESE text */}
-        {countdownRemaining === 0 && (
-          <motion.div
-            initial={{ scale: 0, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            style={{
-              fontSize: '72px',
-              fontWeight: 900,
-              color: 'white',
-              textShadow: '0 0 40px rgba(255,255,255,0.5)',
-            }}
-          >
-            📸 CHEESE!
-          </motion.div>
-        )}
-
-        {/* Progress dots */}
-        <PhotoProgress capturedCount={capturedCount} totalCount={totalCount} />
-      </div>
+      {/* Tip */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.5 }}
+        transition={{ delay: 0.3 }}
+        style={{ fontSize: '13px', color: 'var(--color-text-muted)', textAlign: 'center' }}
+      >
+        {videoRef.current?.srcObject
+          ? '📷 摄像头已就绪 — 倒计时结束自动拍照'
+          : '🎥 请允许摄像头权限，或连接 Sony A7C 使用 Watch Folder 模式'}
+      </motion.p>
     </div>
   );
 }

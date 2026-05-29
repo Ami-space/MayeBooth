@@ -108,7 +108,7 @@ export class SessionService {
 
       // 2. Wait for capture (Sony drops file into watch folder)
       console.log(`📷 Waiting for photo ${i}/${template.photoCount}...`);
-      const rawPath = await this.cameraEngine.waitForNextCapture(session.id, 30_000);
+      const rawPath = await this.cameraEngine.waitForNextCapture(session.id, 60_000);
 
       // 3. Copy & archive photo to session directory
       const sessionDir = path.join(settings.storagePath, 'sessions', session.id);

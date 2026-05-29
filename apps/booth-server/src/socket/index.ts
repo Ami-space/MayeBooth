@@ -108,6 +108,15 @@ export function setupSocketHandlers(io: IO, db: Database.Database): void {
       }
     });
 
+    // ── Webcam Frame Capture ──────────────────────────────────
+    socket.on('camera:capture_frame', ({ sessionId, imageBase64, mimeType }) => {
+      if (!cameraEngine) {
+        socket.emit('error', { code: 'NOT_READY', message: 'Camera engine not ready' });
+        return;
+      }
+      cameraEngine.injectFrame(sessionId, imageBase64, mimeType);
+    });
+
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
     });

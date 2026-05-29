@@ -19,6 +19,8 @@ export class CameraEngine {
   private sessionService: SessionService | null = null;
   private pendingCapture: { sessionId: string; resolve: (path: string) => void } | null = null;
   private captureTimeout: NodeJS.Timeout | null = null;
+  // Buffer for frames that arrive before waitForNextCapture is called
+  private frameBuffer: Map<string, string> = new Map(); // sessionId → filePath
 
   constructor(io: IO, watchFolder: string) {
     this.io = io;
@@ -89,8 +91,18 @@ export class CameraEngine {
    * Wait for the next photo to appear in the watch folder.
    * Resolves with the file path when a new image is detected.
    */
-  waitForNextCapture(sessionId: string, timeoutMs = 30_000): Promise<string> {
+  waitForNextCapture(sessionId: string, timeoutMs = 60_000): Promise<string> {
     return new Promise((resolve, reject) => {
+      // Check if a frame was already buffered (race condition: client sent frame before we started waiting)
+      if (this.frameBuffer.has(sessionId)) {
+        const bufferedPath = this.frameBuffer.get(sessionId)!;
+        this.frameBuffer.delete(sessionId);
+        console.log(`📸 Using buffered webcam frame for session ${sessionId}`);
+        this.setStatus('connected');
+        resolve(bufferedPath);
+        return;
+      }
+
       if (this.pendingCapture) {
         reject(new Error('Another capture is already pending'));
         return;
@@ -101,6 +113,7 @@ export class CameraEngine {
 
       this.captureTimeout = setTimeout(() => {
         this.pendingCapture = null;
+        this.frameBuffer.delete(sessionId);
         this.setStatus('connected');
         reject(new Error(`Capture timeout after ${timeoutMs}ms`));
       }, timeoutMs);
@@ -116,6 +129,45 @@ export class CameraEngine {
     this.setStatus('connected');
   }
 
+  /**
+   * Inject a webcam frame directly (bypasses watch folder).
+   * Called when client sends camera:capture_frame event.
+   */
+  injectFrame(sessionId: string, imageBase64: string, mimeType: string): void {
+    // Save base64 image to a file in the watch folder
+    const ext = mimeType.includes('png') ? '.png' : '.jpg';
+    const filename = `webcam-${Date.now()}${ext}`;
+    const filePath = path.join(this.watchFolder, filename);
+
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+    fs.writeFileSync(filePath, buffer);
+    // Mark as processed so chokidar doesn't double-trigger
+    this.processedFiles.add(filePath);
+    console.log(`📸 Webcam frame saved: ${filename}`);
+
+    if (this.pendingCapture && this.pendingCapture.sessionId === sessionId) {
+      // waitForNextCapture is already waiting — resolve immediately
+      const { resolve } = this.pendingCapture;
+      this.pendingCapture = null;
+      if (this.captureTimeout) {
+        clearTimeout(this.captureTimeout);
+        this.captureTimeout = null;
+      }
+      this.setStatus('connected');
+      this.io.emit('camera:flash');
+      this.io.emit('camera:captured', {
+        id: '', sessionId, sequence: 0,
+        rawPath: filePath, processedPath: null, createdAt: Date.now(),
+      });
+      resolve(filePath);
+    } else {
+      // waitForNextCapture hasn't been called yet — buffer the path
+      console.log(`🕐 Buffering frame for session ${sessionId} (waitForNextCapture not ready yet)`);
+      this.frameBuffer.set(sessionId, filePath);
+      this.io.emit('camera:flash');
+    }
+  }
   private async handleNewFile(filePath: string): Promise<void> {
     const ext = path.extname(filePath).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(ext)) return;

@@ -231,6 +231,7 @@ export interface ClientToServerEvents {
   'session:cancel': (sessionId: string) => void;
   'session:restart': (sessionId: string) => void;
   'camera:trigger': (sessionId: string) => void;
+  'camera:capture_frame': (data: { sessionId: string; imageBase64: string; mimeType: string }) => void;
   'print:request': (data: { sessionId: string; copies?: number; size?: PrintSize }) => void;
   'settings:get': () => void;
   'settings:update': (settings: Partial<BoothSettings>) => void;
