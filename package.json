@@ -1,0 +1,22 @@
+{
+  "name": "mayebooth",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MayeBooth — 完全离线专业 Photobooth 系统",
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm --filter booth-server dev\" \"pnpm --filter booth-client dev\"",
+    "build": "pnpm --filter booth-server build && pnpm --filter booth-client build",
+    "start": "concurrently \"pnpm --filter booth-server start\" \"pnpm --filter booth-client start\"",
+    "setup": "bash scripts/setup.sh",
+    "booth": "bash scripts/start-booth.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.3"
+  }
+}

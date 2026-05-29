@@ -1,0 +1,28 @@
+#storage/
+#*.db
+#*.log
+#.env.local
+
+# dependencies
+node_modules
+
+# next.js
+.next
+out
+
+# build
+dist
+build
+
+# cache
+.cache
+
+# env
+.env
+.env.local
+
+# system
+.DS_Store
+
+# pnpm
+.pnpm-store
