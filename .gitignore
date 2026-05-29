@@ -1,28 +1,34 @@
-#storage/
-#*.db
-#*.log
-#.env.local
+# Runtime data (never commit these)
+storage/
+*.db
+*.db-shm
+*.db-wal
 
-# dependencies
-node_modules
+# Logs
+*.log
+logs/
 
-# next.js
-.next
-out
-
-# build
-dist
-build
-
-# cache
-.cache
-
-# env
-.env
+# Environment
 .env.local
+.env.*.local
 
-# system
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+out/
+
+# TypeScript build output
+dist/
+
+# macOS
 .DS_Store
+**/.DS_Store
+
+# Editor
+.vscode/
+.idea/
 
 # pnpm
-.pnpm-store
+.pnpm-store/
